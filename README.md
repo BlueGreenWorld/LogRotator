@@ -22,5 +22,5 @@ It requires .NET 4.0 Extended Profile to be installed on host machine.
 ##Warranty##
 This service comes on as is bases, with warranty to work flawlessly.
 
-*Copyright © [FanaticLab](http://www.fanaticlab.com) 2013.*
+**Copyright © [FanaticLab](http://www.fanaticlab.com) 2013.**
 
