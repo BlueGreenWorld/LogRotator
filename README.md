@@ -20,7 +20,7 @@ LogRotator also generates its own logs, therefore you will find two configuratio
 It requires .NET 4.0 Extended Profile to be installed on host machine.
 
 ##Warranty##
-This service comes on as is bases, with warranty to work flawlessly.
+This service comes on as is bases, with no warranty to work flawlessly.
 
 **Copyright © [FanaticLab](http://www.fanaticlab.com) 2013.**
 
