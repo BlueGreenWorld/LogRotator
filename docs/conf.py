@@ -25,7 +25,7 @@ import sys, os
 
 # Add any Sphinx extension module names here, as strings. They can be extensions
 # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
-extensions = []
+extensions = ['sphinx.ext.autodoc']
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -41,7 +41,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'LogRotator'
-copyright = u'2013, Faraz Masood Khan'
+copyright = u'2013, FanaticLab'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -184,7 +184,7 @@ latex_elements = {
 # (source start file, target name, title, author, documentclass [howto/manual]).
 latex_documents = [
   ('index', 'LogRotator.tex', u'LogRotator Documentation',
-   u'Faraz Masood Khan', 'manual'),
+   u'FanaticLab', 'manual'),
 ]
 
 # The name of an image file (relative to this directory) to place at the top of
@@ -214,7 +214,7 @@ latex_documents = [
 # (source start file, name, description, authors, manual section).
 man_pages = [
     ('index', 'logrotator', u'LogRotator Documentation',
-     [u'Faraz Masood Khan'], 1)
+     [u'FanaticLab'], 1)
 ]
 
 # If true, show URL addresses after external links.
@@ -228,7 +228,7 @@ man_pages = [
 #  dir menu entry, description, category)
 texinfo_documents = [
   ('index', 'LogRotator', u'LogRotator Documentation',
-   u'Faraz Masood Khan', 'LogRotator', 'One line description of project.',
+   u'FanaticLab', 'LogRotator', 'One line description of project.',
    'Miscellaneous'),
 ]
 
