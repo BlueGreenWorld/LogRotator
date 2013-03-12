@@ -11,7 +11,7 @@ It works on LogRotator.xml configuration file, pretty much all tags are self-exp
 Offset duration for compressing any log files should be more than 2 to 3 days so that it would be easier for developers to send their reports or logs without the need for decompression.
  
 ##Install/Uninstall##
-[Download](https://github.com/farazmasoodkhan/LogRotator/downloads) latest release and extract archive into appropiate folder than simply run Install.bat file to install this service (as administrator), and run Uninstall.bat to uninstall from host machine. Service is set to run automatically. Remember service will run from the same folder from where you will run Install.bat, so extracts files in the appropriate folder first.
+[Download](https://github.com/FanaticLab/LogRotator/downloads) latest release and extract archive into appropiate folder than simply run Install.bat file to install this service (as administrator), and run Uninstall.bat to uninstall from host machine. Service is set to run automatically. Remember service will run from the same folder from where you will run Install.bat, so extracts files in the appropriate folder first.
  
 ##Logs##
 LogRotator also generates its own logs, therefore you will find two configurations for LogRotator service itself in the config file. Logs will be compress after two days and deleted after seven days. It is recommended to keep theses settings in the config.
