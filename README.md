@@ -5,7 +5,7 @@ LogRotator will free disk resources automatically for you, it resides as windows
 * Delete files older than specific duration, based on last modified timestamp
  
 ##How to Configure##
-It works on LogRotator.xml configuration file, pretty much all tags are self-explanatory, you will find details about each tag in the configuration file.
+It works on [LogRotator.xml](https://github.com/FanaticLab/LogRotator/blob/master/LogRotator/LogRotator.xml) configuration file, pretty much all tags are self-explanatory, you will find details about each tag in the configuration file.
  
 ##Ideal Configuration##
 Offset duration for compressing any log files should be more than 2 to 3 days so that it would be easier for developers to send their reports or logs without the need for decompression.
