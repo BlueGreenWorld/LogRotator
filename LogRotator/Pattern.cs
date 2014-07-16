@@ -28,6 +28,8 @@ namespace LogRotator
 
         private const string XML_DELETE_UNCOMPRESSED = "deleteUnCompressed";
 
+        private const string XML_SIZE = "size";
+
         #endregion
 
         private static readonly string AssemblyDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
@@ -48,6 +50,8 @@ namespace LogRotator
 
         public bool DeleteUnCompressed { get; set; }
 
+        public long Size { get; set; }
+
         public DirectoryInfo DirInfo
         {
             get
@@ -65,7 +69,7 @@ namespace LogRotator
             {
                 var time = DateTime.Now - this.Offset;
                 return this.DirInfo.GetFiles(this.FilePattern, this.SubDirs ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly)
-                            .Where(f => f.LastWriteTime < time)
+                            .Where(f => f.LastWriteTime < time && f.Length>=this.Size)
                             .ToArray();
             }
             else
@@ -81,24 +85,24 @@ namespace LogRotator
             {
                 case PatternAction.Rotate:
                     foreach (var fileInfo in this.GetFiles())
-                    {
-                        Logger.InfoFormat("Compressing file '{0}'", fileInfo.FullName);
-                        try
-                        {
-                            var compressFilePath = GunZip.Compress(fileInfo.FullName);
+                    {                       
+                            Logger.InfoFormat("Compressing file '{0}'", fileInfo.FullName);
+                            try
+                            {
+                                var compressFilePath = GunZip.Compress(fileInfo.FullName);
 
-                            Logger.InfoFormat("Deleting original file '{0}'", fileInfo.FullName);
-                            try { fileInfo.Delete(); }
+                                Logger.InfoFormat("Deleting original file '{0}'", fileInfo.FullName);
+                                try { fileInfo.Delete(); }
+                                catch (Exception ex)
+                                {
+                                    Logger.Error("Failed to delete file", ex);
+                                }
+
+                            }
                             catch (Exception ex)
                             {
-                                Logger.Error("Failed to delete file", ex);
-                            }
-
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.Error("Failed to compress file", ex);
-                        }
+                                Logger.Error("Failed to compress file", ex);
+                            }                        
                     }
                     break;
                 case PatternAction.Delete:
@@ -127,7 +131,7 @@ namespace LogRotator
 
         public override string ToString()
         {
-            return string.Format("[Action: {0}, DirPath: {1}, FilePattern: {2}, Offset: {3:c}, SubDirs: {4}, DeleteUnCompressed: {5}]", this.Action, this.DirPath, this.FilePattern, this.Offset, this.SubDirs, this.DeleteUnCompressed);
+            return string.Format("[Action: {0}, DirPath: {1}, FilePattern: {2}, Offset: {3:c}, SubDirs: {4}, DeleteUnCompressed: {5}, Size: {6}]", this.Action, this.DirPath, this.FilePattern, this.Offset, this.SubDirs, this.DeleteUnCompressed,this.Size);
         }
 
         internal static Pattern Parse(XElement pattern)
@@ -141,6 +145,8 @@ namespace LogRotator
             var offset = (string)pattern.GetMandatoryAttribute(XML_OFFSET);
             var subDirs = (bool?)pattern.Attribute(XML_SUB_DIRS);
             var deleteUnCompressed = (bool?)pattern.Attribute(XML_DELETE_UNCOMPRESSED);
+            var size = (long?)pattern.Attribute(XML_SIZE);
+            
 
             PatternAction patterAction;
             if (!Enum.TryParse<PatternAction>(action, true, out patterAction))
@@ -150,7 +156,7 @@ namespace LogRotator
             if (!TimeSpan.TryParse(offset, out offsetSpan))
                 throw new InvalidOperationException(string.Format("Invalid offset value: '{0}' at pattern: '{1}', it should be in format: [d.]hh:mm:ss", offset, pattern));
 
-            return new Pattern { Action = patterAction, DirPath = dirPath, FilePattern = filePattern, Offset = offsetSpan, SubDirs = subDirs.GetValueOrDefault(), DeleteUnCompressed = deleteUnCompressed.GetValueOrDefault() };
+            return new Pattern { Action = patterAction, DirPath = dirPath, FilePattern = filePattern, Offset = offsetSpan, SubDirs = subDirs.GetValueOrDefault(), DeleteUnCompressed = deleteUnCompressed.GetValueOrDefault(), Size=size.GetValueOrDefault() };
         }
     }
 }

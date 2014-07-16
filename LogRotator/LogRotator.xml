@@ -21,6 +21,6 @@
   subDirs: (true|false) If true search subdirectories for files matching files under dirPath. Use with precautions. Optional
         
   -->
-  <pattern action="rotate" dirPath="Logs" filePattern="*.log" offset="00:01:00" subDirs="true"/>
-  <pattern action="delete" dirPath="Logs" filePattern="*.gz" offset="00:10:00" deleteUnCompressed="false" subDirs="true"/>
+  <pattern action="rotate" dirPath="Logs" filePattern="*.log" offset="00:01:00" subDirs="true" size="500000"/>
+  <pattern action="delete" dirPath="Logs" filePattern="*.gz" offset="00:10:00" deleteUnCompressed="false" subDirs="true" size="100000"/>
 </logRotator>
