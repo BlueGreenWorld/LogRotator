@@ -21,8 +21,10 @@ Sample of LogRotator.xml configuration file
   deleteUnCompressed: Must be set for file not ending .gz extension (only used in delete action)
   
   subDirs: (true|false) If true search subdirectories for files matching files under dirPath. Use with precautions. Optional
+
+  minSize: if the log file's size in bytes is less than this specified amount the log rotator skips the file. Optional
         
   -->
   <pattern action="rotate" dirPath="Logs" filePattern="*.log" offset="00:01:00" subDirs="true"/>
-  <pattern action="delete" dirPath="Logs" filePattern="*.gz" offset="00:10:00" deleteUnCompressed="false" subDirs="true"/>
+  <pattern action="delete" dirPath="Logs" filePattern="*.gz" offset="00:10:00" deleteUnCompressed="false" subDirs="true" minSize="100000"/>
 </logRotator>
