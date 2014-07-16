@@ -28,7 +28,7 @@ namespace LogRotator
 
         private const string XML_DELETE_UNCOMPRESSED = "deleteUnCompressed";
 
-        private const string XML_SIZE = "size";
+        private const string XML_SIZE = "minSize";
 
         #endregion
 
@@ -108,6 +108,7 @@ namespace LogRotator
                 case PatternAction.Delete:
                     foreach (var fileInfo in this.GetFiles())
                     {
+
                         Logger.InfoFormat("Deleting file '{0}'", fileInfo.FullName);
 
                         try
@@ -131,7 +132,7 @@ namespace LogRotator
 
         public override string ToString()
         {
-            return string.Format("[Action: {0}, DirPath: {1}, FilePattern: {2}, Offset: {3:c}, SubDirs: {4}, DeleteUnCompressed: {5}, Size: {6}]", this.Action, this.DirPath, this.FilePattern, this.Offset, this.SubDirs, this.DeleteUnCompressed,this.Size);
+            return string.Format("[Action: {0}, DirPath: {1}, FilePattern: {2}, Offset: {3:c}, SubDirs: {4}, DeleteUnCompressed: {5}, minSize: {6}]", this.Action, this.DirPath, this.FilePattern, this.Offset, this.SubDirs, this.DeleteUnCompressed,this.Size);
         }
 
         internal static Pattern Parse(XElement pattern)
