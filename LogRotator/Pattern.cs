@@ -83,37 +83,27 @@ namespace LogRotator
             return new FileInfo[] { };
         }
 
-        public IEnumerable<FileInfo> GetFiles(DirectoryInfo directoryInfo)
+        public IEnumerable<FileSystemInfo> GetFiles(DirectoryInfo directoryInfo)
         {
-            if (directoryInfo.Exists)
+            var lastModified = DateTime.Now - this.Offset;
+            if (directoryInfo.Exists && directoryInfo.CreationTime < lastModified)
             {
-                var duration = DateTime.Now - this.Offset;
                 foreach (var fileInfo in directoryInfo.EnumerateFiles(this.FilePattern, SearchOption.TopDirectoryOnly))
-                    if (fileInfo.LastWriteTime < duration && fileInfo.Length >= this.Size)
+                    if (fileInfo.LastWriteTime < lastModified && fileInfo.Length >= this.Size)
                         yield return fileInfo;
 
                 if (this.SubDirs)
                 {
-                    var subDirs = directoryInfo.EnumerateDirectories()
-                                               .Where(d => d.CreationTime < duration)
-                                               .OrderBy(d => d.CreationTime);
-                    foreach (var dirInfo in subDirs)
+                    var subDirectories = directoryInfo.EnumerateDirectories();
+                    foreach (var dirInfo in subDirectories)
+                    {
                         foreach (var fileInfo in this.GetFiles(dirInfo))
                             yield return fileInfo;
+                    }
+
+                    if (this.DirInfo != directoryInfo && !directoryInfo.EnumerateFileSystemInfos().Any())
+                        yield return directoryInfo;
                 }
-            }
-        }
-
-        private IEnumerable<DirectoryInfo> GetSubDirectories(DirectoryInfo directoryInfo)
-        {
-            if (directoryInfo.Exists && directoryInfo.CreationTime < (DateTime.Now - this.Offset))
-            {
-                foreach (var subDirInfo in directoryInfo.EnumerateDirectories().OrderBy(d => d.CreationTime))
-                    foreach (var deleteDirInfo in this.GetSubDirectories(subDirInfo))
-                        yield return deleteDirInfo;
-
-                if (this.DirInfo != directoryInfo && !directoryInfo.EnumerateFileSystemInfos().Any())
-                    yield return directoryInfo;
             }
         }
 
@@ -123,9 +113,11 @@ namespace LogRotator
             switch (this.Action)
             {
                 case PatternAction.Rotate:
-                    var rotateFiles = this.GetFiles(this.DirInfo).Take(maxBatchSize).ToArray();
+                    var rotateFilesCount = 0;
+                    var rotateFiles = this.GetFiles(this.DirInfo).Where(f => f is FileInfo).Take(maxBatchSize);
                     foreach (var fileInfo in rotateFiles)
                     {
+                        rotateFilesCount++;
                         Logger.InfoFormat("Compressing file '{0}'", fileInfo.FullName);
                         try
                         {
@@ -143,49 +135,35 @@ namespace LogRotator
                             Logger.Error("Failed to compress file", ex);
                         }
                     }
-                    return rotateFiles.Length;
+                    return rotateFilesCount;
                 case PatternAction.Delete:
-                    var deleteFiles = this.GetFiles(this.DirInfo).Take(maxBatchSize).ToArray();
+                    var deleteFilesCount = 0;
+                    var deleteFiles = this.DeleteSubDirs 
+                        ? this.GetFiles(this.DirInfo).Take(maxBatchSize)
+                        : this.GetFiles(this.DirInfo).Where(f => f is FileInfo).Take(maxBatchSize);
+
                     foreach (var fileInfo in deleteFiles)
                     {
-                        Logger.InfoFormat("Deleting file '{0}'", fileInfo.FullName);
+                        deleteFilesCount++;
                         try
                         {
-                            if (fileInfo.Extension != ".gz" && !this.DeleteUnCompressed)
-                                throw new InvalidOperationException(string.Format("Cannot delete uncompressed file '{0}' (without extension .gz) unless deleteUnCompressed attribute is explicitly set to true in LogRotator configuration file", fileInfo.Name));
+                            if (fileInfo is FileInfo)
+                            {
+                                Logger.InfoFormat("Deleting file '{0}'", fileInfo.FullName);
+                                if (fileInfo.Extension != ".gz" && !this.DeleteUnCompressed)
+                                    throw new InvalidOperationException(string.Format("Cannot delete uncompressed file '{0}' (without extension .gz) unless deleteUnCompressed attribute is explicitly set to true in LogRotator configuration file", fileInfo.Name));
+                            }
+                            else 
+                                Logger.InfoFormat("Deleting directory '{0}'", fileInfo.FullName);
 
                             fileInfo.Delete();
                         }
                         catch (Exception ex)
                         {
-                            Logger.Error("Failed to delete file", ex);
+                            Logger.Error("Failed to delete file or directory", ex);
                         }
-                    }
-
-                    if (this.DeleteSubDirs)
-                    {
-                        var subDirectories = deleteFiles.Length == 0
-                            ? this.GetSubDirectories(this.DirInfo).Take(maxBatchSize)
-                            : deleteFiles.Select(f => f.DirectoryName)
-                                         .Distinct()
-                                         .Select(d => new DirectoryInfo(d))
-                                         .Where(d => d.Exists && !d.EnumerateFileSystemInfos().Any());
-
-                        foreach (var deleteDirInfo in subDirectories)
-                        {
-                            Logger.InfoFormat("Deleting directory '{0}'", deleteDirInfo.FullName);
-                            try
-                            {
-                                deleteDirInfo.Delete();
-                            }
-                            catch (Exception ex)
-                            {
-                                Logger.Warn("Unable to delete directory: " + deleteDirInfo.FullName, ex);
-                            }
-                        }
-                    }
-
-                    return deleteFiles.Length;
+                    } 
+                    return deleteFilesCount;
                 default:
                     throw new NotSupportedException(string.Format("Pattern Action '{0}' not supported/unknown", this.Action));
             }
