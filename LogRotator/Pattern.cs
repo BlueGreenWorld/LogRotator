@@ -7,6 +7,7 @@ using System.IO;
 using System.Reflection;
 using log4net;
 using CoreSystem.Util;
+using System.Text.RegularExpressions;
 
 namespace LogRotator
 {
@@ -30,6 +31,8 @@ namespace LogRotator
 
         private const string XML_SIZE = "minSize";
 
+        private const string XML_DELETE_SUB_DIRS = "deleteSubDirs";
+
         #endregion
 
         private static readonly string AssemblyDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
@@ -52,6 +55,8 @@ namespace LogRotator
 
         public long Size { get; set; }
 
+        public bool DeleteSubDirs { get; set; }
+
         public DirectoryInfo DirInfo
         {
             get
@@ -69,7 +74,7 @@ namespace LogRotator
             {
                 var time = DateTime.Now - this.Offset;
                 return this.DirInfo.GetFiles(this.FilePattern, this.SubDirs ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly)
-                            .Where(f => f.LastWriteTime < time && f.Length>=this.Size)
+                            .Where(f => f.LastWriteTime < time && f.Length >= this.Size)
                             .ToArray();
             }
             else
@@ -78,39 +83,72 @@ namespace LogRotator
             return new FileInfo[] { };
         }
 
-        public void Do()
+        public IEnumerable<FileInfo> GetFiles(DirectoryInfo directoryInfo)
+        {
+            if (directoryInfo.Exists)
+            {
+                var duration = DateTime.Now - this.Offset;
+                foreach (var fileInfo in directoryInfo.EnumerateFiles(this.FilePattern, SearchOption.TopDirectoryOnly))
+                    if (fileInfo.LastWriteTime < duration && fileInfo.Length >= this.Size)
+                        yield return fileInfo;
+
+                if (this.SubDirs)
+                {
+                    var subDirs = directoryInfo.EnumerateDirectories()
+                                               .Where(d => d.CreationTime < duration)
+                                               .OrderBy(d => d.CreationTime);
+                    foreach (var dirInfo in subDirs)
+                        foreach (var fileInfo in this.GetFiles(dirInfo))
+                            yield return fileInfo;
+                }
+            }
+        }
+
+        private IEnumerable<DirectoryInfo> GetSubDirectories(DirectoryInfo directoryInfo)
+        {
+            if (directoryInfo.Exists && directoryInfo.CreationTime < (DateTime.Now - this.Offset))
+            {
+                foreach (var subDirInfo in directoryInfo.EnumerateDirectories().OrderBy(d => d.CreationTime))
+                    foreach (var deleteDirInfo in this.GetSubDirectories(subDirInfo))
+                        yield return deleteDirInfo;
+
+                if (this.DirInfo != directoryInfo && !directoryInfo.EnumerateFileSystemInfos().Any())
+                    yield return directoryInfo;
+            }
+        }
+
+        public int Do(int maxBatchSize)
         {
             Logger.InfoFormat("Processing Pattern {0}", this);
             switch (this.Action)
             {
                 case PatternAction.Rotate:
-                    foreach (var fileInfo in this.GetFiles())
-                    {                       
-                            Logger.InfoFormat("Compressing file '{0}'", fileInfo.FullName);
-                            try
-                            {
-                                var compressFilePath = GunZip.Compress(fileInfo.FullName);
+                    var rotateFiles = this.GetFiles(this.DirInfo).Take(maxBatchSize).ToArray();
+                    foreach (var fileInfo in rotateFiles)
+                    {
+                        Logger.InfoFormat("Compressing file '{0}'", fileInfo.FullName);
+                        try
+                        {
+                            var compressFilePath = GunZip.Compress(fileInfo.FullName);
 
-                                Logger.InfoFormat("Deleting original file '{0}'", fileInfo.FullName);
-                                try { fileInfo.Delete(); }
-                                catch (Exception ex)
-                                {
-                                    Logger.Error("Failed to delete file", ex);
-                                }
-
-                            }
+                            Logger.InfoFormat("Deleting original file '{0}'", fileInfo.FullName);
+                            try { fileInfo.Delete(); }
                             catch (Exception ex)
                             {
-                                Logger.Error("Failed to compress file", ex);
-                            }                        
+                                Logger.Error("Failed to delete file", ex);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Error("Failed to compress file", ex);
+                        }
                     }
-                    break;
+                    return rotateFiles.Length;
                 case PatternAction.Delete:
-                    foreach (var fileInfo in this.GetFiles())
+                    var deleteFiles = this.GetFiles(this.DirInfo).Take(maxBatchSize).ToArray();
+                    foreach (var fileInfo in deleteFiles)
                     {
-
                         Logger.InfoFormat("Deleting file '{0}'", fileInfo.FullName);
-
                         try
                         {
                             if (fileInfo.Extension != ".gz" && !this.DeleteUnCompressed)
@@ -124,7 +162,30 @@ namespace LogRotator
                         }
                     }
 
-                    break;
+                    if (this.DeleteSubDirs)
+                    {
+                        var subDirectories = deleteFiles.Length == 0
+                            ? this.GetSubDirectories(this.DirInfo).Take(maxBatchSize)
+                            : deleteFiles.Select(f => f.DirectoryName)
+                                         .Distinct()
+                                         .Select(d => new DirectoryInfo(d))
+                                         .Where(d => d.Exists && !d.EnumerateFileSystemInfos().Any());
+
+                        foreach (var deleteDirInfo in subDirectories)
+                        {
+                            Logger.InfoFormat("Deleting directory '{0}'", deleteDirInfo.FullName);
+                            try
+                            {
+                                deleteDirInfo.Delete();
+                            }
+                            catch (Exception ex)
+                            {
+                                Logger.Warn("Unable to delete directory: " + deleteDirInfo.FullName, ex);
+                            }
+                        }
+                    }
+
+                    return deleteFiles.Length;
                 default:
                     throw new NotSupportedException(string.Format("Pattern Action '{0}' not supported/unknown", this.Action));
             }
@@ -132,7 +193,7 @@ namespace LogRotator
 
         public override string ToString()
         {
-            return string.Format("[Action: {0}, DirPath: {1}, FilePattern: {2}, Offset: {3:c}, SubDirs: {4}, DeleteUnCompressed: {5}, minSize: {6}]", this.Action, this.DirPath, this.FilePattern, this.Offset, this.SubDirs, this.DeleteUnCompressed,this.Size);
+            return string.Format("[Action: {0}, DirPath: {1}, FilePattern: {2}, Offset: {3:c}, SubDirs: {4}, DeleteUnCompressed: {5}, minSize: {6}, deleteSubDirs: {7}]", this.Action, this.DirPath, this.FilePattern, this.Offset, this.SubDirs, this.DeleteUnCompressed, this.Size, this.DeleteSubDirs);
         }
 
         internal static Pattern Parse(XElement pattern)
@@ -147,7 +208,8 @@ namespace LogRotator
             var subDirs = (bool?)pattern.Attribute(XML_SUB_DIRS);
             var deleteUnCompressed = (bool?)pattern.Attribute(XML_DELETE_UNCOMPRESSED);
             var size = (long?)pattern.Attribute(XML_SIZE);
-            
+            var deleteSubDirs = (bool?)pattern.Attribute(XML_DELETE_SUB_DIRS);
+
 
             PatternAction patterAction;
             if (!Enum.TryParse<PatternAction>(action, true, out patterAction))
@@ -157,7 +219,7 @@ namespace LogRotator
             if (!TimeSpan.TryParse(offset, out offsetSpan))
                 throw new InvalidOperationException(string.Format("Invalid offset value: '{0}' at pattern: '{1}', it should be in format: [d.]hh:mm:ss", offset, pattern));
 
-            return new Pattern { Action = patterAction, DirPath = dirPath, FilePattern = filePattern, Offset = offsetSpan, SubDirs = subDirs.GetValueOrDefault(), DeleteUnCompressed = deleteUnCompressed.GetValueOrDefault(), Size=size.GetValueOrDefault() };
+            return new Pattern { Action = patterAction, DirPath = dirPath, FilePattern = filePattern, Offset = offsetSpan, SubDirs = subDirs.GetValueOrDefault(), DeleteUnCompressed = deleteUnCompressed.GetValueOrDefault(), Size = size.GetValueOrDefault(), DeleteSubDirs = deleteSubDirs.GetValueOrDefault() };
         }
     }
 }

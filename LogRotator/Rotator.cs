@@ -7,6 +7,7 @@ using System.Threading;
 using CoreSystem.Util;
 using System.IO;
 using System.Xml.Linq;
+using System.Threading.Tasks;
 
 namespace LogRotator
 {
@@ -23,6 +24,8 @@ namespace LogRotator
 
         #endregion
 
+        private const int MAX_BATCH_SIZE = 100;
+
         private static readonly ILog Logger = LogManager.GetLogger(typeof(Rotator));
 
         private bool continuePooling;
@@ -31,7 +34,10 @@ namespace LogRotator
 
         private Pattern[] patterns;
 
-        private Thread workerThread;
+        private List<Task> patternTasks = new List<Task>();
+
+        private CancellationTokenSource stopToken = new CancellationTokenSource();
+
 
         /// <summary>
         /// Initializes Rotator service with pool interval and match patterns
@@ -52,49 +58,49 @@ namespace LogRotator
 
         public void Start()
         {
-            if (this.workerThread != null)
-                throw new InvalidOperationException("LogRotator service is already running");
+            if (this.patternTasks.Count != 0)
+                throw new InvalidOperationException("LogRotator service is already running.");
 
             this.continuePooling = true;
-            this.workerThread = new Thread(new ThreadStart(this.Do));
-            this.workerThread.Start();
-            Logger.InfoFormat("LogRotator service started");
+            this.stopToken = new CancellationTokenSource();
+
+            foreach(var pattern in this.patterns)
+                this.patternTasks.Add(Task.Run(async () => await this.ProcessPatternAsync(pattern)));
+
+            Logger.InfoFormat("LogRotator service started.");
         }
 
-        public void Stop()
-        {
-            if (this.workerThread != null)
-            {
-                this.continuePooling = false;
-                this.workerThread.Interrupt();
-                this.workerThread.Join();
-                this.workerThread = null;
-
-                Logger.InfoFormat("LogRotator service is stopped");
-            }
-        }
-
-        private void Do()
+        private async Task ProcessPatternAsync(Pattern pattern)
         {
             while (this.continuePooling)
                 try
                 {
-                    foreach (var pattern in this.patterns)
+                    var processedFilesCount = 0;
+                    try
                     {
-                        try
-                        {
-                            pattern.Do();
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.Error(ex);
-                        }
-                    }
+                        processedFilesCount = pattern.Do(MAX_BATCH_SIZE);
+                    } 
+                    catch (Exception ex)
+                    { Logger.Error(ex); }
 
-                    Thread.Sleep(this.poolInterval);
+                    if(processedFilesCount < MAX_BATCH_SIZE)
+                        await Task.Delay(this.poolInterval, this.stopToken.Token);
                 }
-                catch (ThreadInterruptedException)
-                { }
+                catch (TaskCanceledException) { }
+        }
+
+        public void Stop()
+        {
+            this.continuePooling = false;
+            this.stopToken?.Cancel();
+
+            Task.WaitAll(this.patternTasks.ToArray());
+            this.patternTasks.Clear();
+
+            this.stopToken?.Dispose();
+            this.stopToken = null;
+
+            Logger.InfoFormat("LogRotator service is stopped");
         }
 
         public static Rotator Parse(string path)
