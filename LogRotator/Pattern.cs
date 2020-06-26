@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Xml.Linq;
 using System.IO;
+using System.Threading.Tasks;
 using System.Reflection;
 using log4net;
 using CoreSystem.Util;
@@ -113,18 +114,17 @@ namespace LogRotator
             switch (this.Action)
             {
                 case PatternAction.Rotate:
-                    var rotateFilesCount = 0;
                     var rotateFiles = this.GetFiles(this.DirInfo).Where(f => f is FileInfo).Take(maxBatchSize);
-                    foreach (var fileInfo in rotateFiles)
+
+                    var rotateTasks = rotateFiles.Select(f => Task.Run(() =>
                     {
-                        rotateFilesCount++;
-                        Logger.InfoFormat("Compressing file '{0}'", fileInfo.FullName);
+                        Logger.InfoFormat("Compressing file '{0}'", f.FullName);
                         try
                         {
-                            var compressFilePath = GunZip.Compress(fileInfo.FullName);
+                            var compressFilePath = GunZip.Compress(f.FullName);
 
-                            Logger.InfoFormat("Deleting original file '{0}'", fileInfo.FullName);
-                            try { fileInfo.Delete(); }
+                            Logger.InfoFormat("Deleting original file '{0}'", f.FullName);
+                            try { f.Delete(); }
                             catch (Exception ex)
                             {
                                 Logger.Error("Failed to delete file", ex);
@@ -134,36 +134,42 @@ namespace LogRotator
                         {
                             Logger.Error("Failed to compress file", ex);
                         }
-                    }
-                    return rotateFilesCount;
+
+
+                    })).ToArray();
+
+                    Task.WaitAll(rotateTasks);
+                    return rotateTasks.Length;
+
                 case PatternAction.Delete:
-                    var deleteFilesCount = 0;
-                    var deleteFiles = this.DeleteSubDirs 
+                    var deleteFiles = this.DeleteSubDirs
                         ? this.GetFiles(this.DirInfo).Take(maxBatchSize)
                         : this.GetFiles(this.DirInfo).Where(f => f is FileInfo).Take(maxBatchSize);
 
-                    foreach (var fileInfo in deleteFiles)
+                    var deleteTasks = deleteFiles.Select(f => Task.Run(() =>
                     {
-                        deleteFilesCount++;
                         try
                         {
-                            if (fileInfo is FileInfo)
+                            if (f is FileInfo)
                             {
-                                Logger.InfoFormat("Deleting file '{0}'", fileInfo.FullName);
-                                if (fileInfo.Extension != ".gz" && !this.DeleteUnCompressed)
-                                    throw new InvalidOperationException(string.Format("Cannot delete uncompressed file '{0}' (without extension .gz) unless deleteUnCompressed attribute is explicitly set to true in LogRotator configuration file", fileInfo.Name));
+                                Logger.InfoFormat("Deleting file '{0}'", f.FullName);
+                                if (f.Extension != ".gz" && !this.DeleteUnCompressed)
+                                    throw new InvalidOperationException(string.Format("Cannot delete uncompressed file '{0}' (without extension .gz) unless deleteUnCompressed attribute is explicitly set to true in LogRotator configuration file", f.Name));
                             }
-                            else 
-                                Logger.InfoFormat("Deleting directory '{0}'", fileInfo.FullName);
+                            else
+                                Logger.InfoFormat("Deleting directory '{0}'", f.FullName);
 
-                            fileInfo.Delete();
+                            f.Delete();
                         }
                         catch (Exception ex)
                         {
                             Logger.Error("Failed to delete file or directory", ex);
                         }
-                    } 
-                    return deleteFilesCount;
+                    })).ToArray();
+
+                    Task.WaitAll(deleteTasks);
+                    return deleteTasks.Length;
+
                 default:
                     throw new NotSupportedException(string.Format("Pattern Action '{0}' not supported/unknown", this.Action));
             }
