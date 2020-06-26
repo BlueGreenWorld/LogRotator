@@ -81,7 +81,7 @@ namespace LogRotator
 
                 if (this.SubDirs)
                 {
-                    var subDirectories = directoryInfo.EnumerateDirectories();
+                    var subDirectories = directoryInfo.EnumerateDirectories().OrderBy(d => d.Name.Length).ThenBy(d => d.Name);
                     foreach (var dirInfo in subDirectories)
                     {
                         foreach (var fileInfo in this.GetFiles(dirInfo))
@@ -108,7 +108,7 @@ namespace LogRotator
 
                     foreach (var fileInfo in rotateFiles)
                     {
-                        if(cancellationToken.IsCancellationRequested && filesCount >= maxBatchSize * 10)
+                        if(cancellationToken.IsCancellationRequested || filesCount >= maxBatchSize * 10)
                             break;
 
                         rotateTasks.RemoveAll(t => t.IsCompleted);
@@ -123,7 +123,6 @@ namespace LogRotator
                     return filesCount;
 
                 case PatternAction.Delete:
-                    var deleteFilesCount = 0;
                     var deleteTasks = new List<Task>();
                     var deleteFiles = this.DeleteSubDirs
                         ? this.GetFiles(this.DirInfo)
@@ -131,7 +130,7 @@ namespace LogRotator
 
                     foreach (var fileInfo in deleteFiles)
                     {
-                        if(cancellationToken.IsCancellationRequested && filesCount >= maxBatchSize * 10)
+                        if(cancellationToken.IsCancellationRequested || filesCount >= maxBatchSize * 10)
                             break;
 
                         deleteTasks.RemoveAll(t => t.IsCompleted);

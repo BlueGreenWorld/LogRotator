@@ -24,7 +24,7 @@ namespace LogRotator
 
         #endregion
 
-        private const int MAX_BATCH_SIZE = 100;
+        private const int MAX_BATCH_SIZE = 1000;
 
         private static readonly ILog Logger = LogManager.GetLogger(typeof(Rotator));
 
