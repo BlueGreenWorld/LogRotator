@@ -114,65 +114,93 @@ namespace LogRotator
             switch (this.Action)
             {
                 case PatternAction.Rotate:
-                    var rotateFiles = this.GetFiles(this.DirInfo).Where(f => f is FileInfo).Take(maxBatchSize);
 
-                    var rotateTasks = rotateFiles.Select(f => Task.Run(() =>
+                    var rotateFilesCount = 0;
+                    var rotateTasks = new List<Task>();
+                    var rotateFiles = this.GetFiles(this.DirInfo).Where(f => f is FileInfo);
+
+
+                    foreach (var fileInfo in rotateFiles)
                     {
-                        Logger.InfoFormat("Compressing file '{0}'", f.FullName);
-                        try
-                        {
-                            var compressFilePath = GunZip.Compress(f.FullName);
+                        rotateTasks.RemoveAll(t => t.IsCompleted);
+                        if (rotateTasks.Count >= maxBatchSize)
+                            Task.WaitAny(rotateTasks.ToArray());
 
-                            Logger.InfoFormat("Deleting original file '{0}'", f.FullName);
-                            try { f.Delete(); }
-                            catch (Exception ex)
-                            {
-                                Logger.Error("Failed to delete file", ex);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.Error("Failed to compress file", ex);
-                        }
-
-
-                    })).ToArray();
-
-                    Task.WaitAll(rotateTasks);
-                    return rotateTasks.Length;
+                        rotateTasks.Add(RotateFile(fileInfo));
+                        rotateFilesCount++;
+                    }
+                    return rotateFilesCount;
 
                 case PatternAction.Delete:
+                    var deleteFilesCount = 0;
+                    var deleteTasks = new List<Task>();
                     var deleteFiles = this.DeleteSubDirs
-                        ? this.GetFiles(this.DirInfo).Take(maxBatchSize)
-                        : this.GetFiles(this.DirInfo).Where(f => f is FileInfo).Take(maxBatchSize);
+                        ? this.GetFiles(this.DirInfo)
+                        : this.GetFiles(this.DirInfo).Where(f => f is FileInfo);
 
-                    var deleteTasks = deleteFiles.Select(f => Task.Run(() =>
+                    foreach (var fileInfo in deleteFiles)
                     {
-                        try
-                        {
-                            if (f is FileInfo)
-                            {
-                                Logger.InfoFormat("Deleting file '{0}'", f.FullName);
-                                if (f.Extension != ".gz" && !this.DeleteUnCompressed)
-                                    throw new InvalidOperationException(string.Format("Cannot delete uncompressed file '{0}' (without extension .gz) unless deleteUnCompressed attribute is explicitly set to true in LogRotator configuration file", f.Name));
-                            }
-                            else
-                                Logger.InfoFormat("Deleting directory '{0}'", f.FullName);
 
-                            f.Delete();
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.Error("Failed to delete file or directory", ex);
-                        }
-                    })).ToArray();
+                        deleteTasks.RemoveAll(t => t.IsCompleted);
+                        if (deleteTasks.Count >= maxBatchSize)
+                            Task.WaitAny(deleteTasks.ToArray());
 
-                    Task.WaitAll(deleteTasks);
-                    return deleteTasks.Length;
+                        deleteTasks.Add(DeleteFile(fileInfo));
+                        deleteFilesCount++;
+                    }
+
+                    return deleteFilesCount;
 
                 default:
                     throw new NotSupportedException(string.Format("Pattern Action '{0}' not supported/unknown", this.Action));
             }
+        }
+
+        private Task RotateFile(FileSystemInfo fileInfo)
+        {
+            return Task.Run(() =>
+            {
+                Logger.InfoFormat("Compressing file '{0}'", fileInfo.FullName);
+                try
+                {
+                    var compressFilePath = GunZip.Compress(fileInfo.FullName);
+
+                    Logger.InfoFormat("Deleting original file '{0}'", fileInfo.FullName);
+                    try { fileInfo.Delete(); }
+                    catch (Exception ex)
+                    {
+                        Logger.Error("Failed to delete file", ex);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("Failed to compress file", ex);
+                }
+            });
+        }
+
+        private Task DeleteFile(FileSystemInfo fileInfo)
+        {
+            return Task.Run(() =>
+            {
+                try
+                {
+                    if (fileInfo is FileInfo)
+                    {
+                        Logger.InfoFormat("Deleting file '{0}'", fileInfo.FullName);
+                        if (fileInfo.Extension != ".gz" && !this.DeleteUnCompressed)
+                            throw new InvalidOperationException(string.Format("Cannot delete uncompressed file '{0}' (without extension .gz) unless deleteUnCompressed attribute is explicitly set to true in LogRotator configuration file", fileInfo.Name));
+                    }
+                    else
+                        Logger.InfoFormat("Deleting directory '{0}'", fileInfo.FullName);
+
+                    fileInfo.Delete();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("Failed to delete file or directory", ex);
+                }
+            });
         }
 
         public override string ToString()

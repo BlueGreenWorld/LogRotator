@@ -83,7 +83,7 @@ namespace LogRotator
                     catch (Exception ex)
                     { Logger.Error(ex); }
 
-                    if(processedFilesCount < MAX_BATCH_SIZE)
+                    if(processedFilesCount == 0)
                         await Task.Delay(this.poolInterval, this.stopToken.Token);
                 }
                 catch (TaskCanceledException) { }
