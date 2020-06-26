@@ -78,7 +78,7 @@ namespace LogRotator
                     var processedFilesCount = 0;
                     try
                     {
-                        processedFilesCount = pattern.Do(MAX_BATCH_SIZE);
+                        processedFilesCount = pattern.Do(MAX_BATCH_SIZE, this.stopToken.Token);
                     } 
                     catch (Exception ex)
                     { Logger.Error(ex); }

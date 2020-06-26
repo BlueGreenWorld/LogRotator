@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Xml.Linq;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Reflection;
 using log4net;
@@ -108,7 +109,7 @@ namespace LogRotator
             }
         }
 
-        public int Do(int maxBatchSize)
+        public int Do(int maxBatchSize, CancellationToken cancellationToken)
         {
             Logger.InfoFormat("Processing Pattern {0}", this);
             switch (this.Action)
@@ -122,6 +123,9 @@ namespace LogRotator
 
                     foreach (var fileInfo in rotateFiles)
                     {
+                        if(cancellationToken.IsCancellationRequested)
+                            break;
+
                         rotateTasks.RemoveAll(t => t.IsCompleted);
                         if (rotateTasks.Count >= maxBatchSize)
                             Task.WaitAny(rotateTasks.ToArray());
@@ -129,6 +133,8 @@ namespace LogRotator
                         rotateTasks.Add(RotateFile(fileInfo));
                         rotateFilesCount++;
                     }
+
+                    Task.WaitAll(rotateTasks.ToArray());
                     return rotateFilesCount;
 
                 case PatternAction.Delete:
@@ -140,6 +146,8 @@ namespace LogRotator
 
                     foreach (var fileInfo in deleteFiles)
                     {
+                        if(cancellationToken.IsCancellationRequested)
+                            break;
 
                         deleteTasks.RemoveAll(t => t.IsCompleted);
                         if (deleteTasks.Count >= maxBatchSize)
@@ -149,6 +157,7 @@ namespace LogRotator
                         deleteFilesCount++;
                     }
 
+                    Task.WaitAll(deleteTasks.ToArray());
                     return deleteFilesCount;
 
                 default:
