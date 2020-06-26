@@ -70,21 +70,6 @@ namespace LogRotator
             }
         }
 
-        public FileInfo[] GetFiles()
-        {
-            if (this.DirInfo.Exists)
-            {
-                var time = DateTime.Now - this.Offset;
-                return this.DirInfo.GetFiles(this.FilePattern, this.SubDirs ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly)
-                            .Where(f => f.LastWriteTime < time && f.Length >= this.Size)
-                            .ToArray();
-            }
-            else
-                Logger.WarnFormat(string.Format("Directory '{0}' doesn't exists", this.DirInfo.FullName));
-
-            return new FileInfo[] { };
-        }
-
         public IEnumerable<FileSystemInfo> GetFiles(DirectoryInfo directoryInfo)
         {
             var lastModified = DateTime.Now - this.Offset;
@@ -111,19 +96,19 @@ namespace LogRotator
 
         public int Do(int maxBatchSize, CancellationToken cancellationToken)
         {
+            var filesCount = 0;
+
             Logger.InfoFormat("Processing Pattern {0}", this);
             switch (this.Action)
             {
                 case PatternAction.Rotate:
 
-                    var rotateFilesCount = 0;
                     var rotateTasks = new List<Task>();
                     var rotateFiles = this.GetFiles(this.DirInfo).Where(f => f is FileInfo);
 
-
                     foreach (var fileInfo in rotateFiles)
                     {
-                        if(cancellationToken.IsCancellationRequested)
+                        if(cancellationToken.IsCancellationRequested && filesCount >= maxBatchSize * 10)
                             break;
 
                         rotateTasks.RemoveAll(t => t.IsCompleted);
@@ -131,11 +116,11 @@ namespace LogRotator
                             Task.WaitAny(rotateTasks.ToArray());
 
                         rotateTasks.Add(RotateFile(fileInfo));
-                        rotateFilesCount++;
+                        filesCount++;
                     }
 
                     Task.WaitAll(rotateTasks.ToArray());
-                    return rotateFilesCount;
+                    return filesCount;
 
                 case PatternAction.Delete:
                     var deleteFilesCount = 0;
@@ -146,7 +131,7 @@ namespace LogRotator
 
                     foreach (var fileInfo in deleteFiles)
                     {
-                        if(cancellationToken.IsCancellationRequested)
+                        if(cancellationToken.IsCancellationRequested && filesCount >= maxBatchSize * 10)
                             break;
 
                         deleteTasks.RemoveAll(t => t.IsCompleted);
@@ -154,11 +139,11 @@ namespace LogRotator
                             Task.WaitAny(deleteTasks.ToArray());
 
                         deleteTasks.Add(DeleteFile(fileInfo));
-                        deleteFilesCount++;
+                        filesCount++;
                     }
 
                     Task.WaitAll(deleteTasks.ToArray());
-                    return deleteFilesCount;
+                    return filesCount;
 
                 default:
                     throw new NotSupportedException(string.Format("Pattern Action '{0}' not supported/unknown", this.Action));
