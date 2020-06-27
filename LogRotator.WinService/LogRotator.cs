@@ -1,31 +1,26 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Diagnostics;
-using System.Linq;
-using System.ServiceProcess;
-using System.Text;
-using log4net;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Reflection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace LogRotator.WinService
 {
-    public partial class LogRotator : ServiceBase
+    public class LogRotator : BackgroundService
     {
-        private static readonly ILog Logger = LogManager.GetLogger(typeof(LogRotator));
-
+        private readonly ILogger _logger;
         private static readonly string AssemblyDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
 
         private Rotator rotator;
 
-        public LogRotator()
+        public LogRotator(ILogger<LogRotator> logger)
         {
-            InitializeComponent();
+            _logger = logger;
         }
 
-        protected override void OnStart(string[] args)
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             try
             {
@@ -34,21 +29,20 @@ namespace LogRotator.WinService
             }
             catch (Exception ex)
             {
-                Logger.Error("Failed to start LogRotator service", ex);
+                _logger.LogError("Failed to start LogRotator service", ex);
             }
-        }
 
-        protected override void OnStop()
-        {
-            if (this.rotator != null)
-                try
-                {
-                    this.rotator.Stop();
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error("Failed to stop LogRotator service", ex);
-                }
+            try
+            {
+                while (!stoppingToken.IsCancellationRequested)
+                    await Task.Delay(1000, stoppingToken);
+
+                this.rotator.Stop();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError("Failed to stop LogRotator service", ex);
+            }
         }
     }
 }

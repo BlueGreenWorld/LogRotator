@@ -8,7 +8,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Reflection;
 using log4net;
-using CoreSystem.Util;
 using System.Text.RegularExpressions;
 
 namespace LogRotator
@@ -156,7 +155,7 @@ namespace LogRotator
                 Logger.InfoFormat("Compressing file '{0}'", fileInfo.FullName);
                 try
                 {
-                    var compressFilePath = GunZip.Compress(fileInfo.FullName);
+                    var compressFilePath = ""; //GunZip.Compress(fileInfo.FullName);
 
                     Logger.InfoFormat("Deleting original file '{0}'", fileInfo.FullName);
                     try { fileInfo.Delete(); }

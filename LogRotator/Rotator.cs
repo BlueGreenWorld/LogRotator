@@ -1,10 +1,9 @@
-﻿using System;
+﻿using Flettu.Util;
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using log4net;
 using System.Threading;
-using CoreSystem.Util;
 using System.IO;
 using System.Xml.Linq;
 using System.Threading.Tasks;
