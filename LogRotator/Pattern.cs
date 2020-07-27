@@ -103,7 +103,7 @@ namespace LogRotator
             {
                 case PatternAction.Rotate:
 
-                    var rotateTasks = new List<Task>();
+                    var rotateTasks = new List<Task<bool>>();
                     var rotateFiles = this.GetFiles(this.DirInfo).Where(f => f is FileInfo);
 
                     foreach (var fileInfo in rotateFiles)
@@ -111,19 +111,26 @@ namespace LogRotator
                         if(cancellationToken.IsCancellationRequested || filesCount >= maxBatchSize * 10)
                             break;
 
-                        rotateTasks.RemoveAll(t => t.IsCompleted);
                         if (rotateTasks.Count >= maxBatchSize)
                             Task.WaitAny(rotateTasks.ToArray());
 
+
+                        foreach(var task in rotateTasks.Where(t => t.IsCompleted).ToArray())
+                        {
+                            if(task.Result)
+                                filesCount++;
+
+                            rotateTasks.Remove(task);
+                        }
+                
                         rotateTasks.Add(RotateFile(fileInfo));
-                        filesCount++;
                     }
 
                     Task.WaitAll(rotateTasks.ToArray());
-                    return filesCount;
+                    return filesCount + rotateTasks.Count(t => t.Result);
 
                 case PatternAction.Delete:
-                    var deleteTasks = new List<Task>();
+                    var deleteTasks = new List<Task<bool>>();
                     var deleteFiles = this.DeleteSubDirs
                         ? this.GetFiles(this.DirInfo)
                         : this.GetFiles(this.DirInfo).Where(f => f is FileInfo);
@@ -133,25 +140,31 @@ namespace LogRotator
                         if(cancellationToken.IsCancellationRequested || filesCount >= maxBatchSize * 10)
                             break;
 
-                        deleteTasks.RemoveAll(t => t.IsCompleted);
                         if (deleteTasks.Count >= maxBatchSize)
                             Task.WaitAny(deleteTasks.ToArray());
 
+                        foreach(var task in deleteTasks.Where(t => t.IsCompleted).ToArray())
+                        {
+                            if(task.Result)
+                                filesCount++;
+
+                            deleteTasks.Remove(task);
+                        }
+
                         deleteTasks.Add(DeleteFile(fileInfo));
-                        filesCount++;
                     }
 
                     Task.WaitAll(deleteTasks.ToArray());
-                    return filesCount;
+                    return filesCount + deleteTasks.Count(t => t.Result);
 
                 default:
                     throw new NotSupportedException(string.Format("Pattern Action '{0}' not supported/unknown", this.Action));
             }
         }
 
-        private Task RotateFile(FileSystemInfo fileInfo)
+        private Task<bool> RotateFile(FileSystemInfo fileInfo)
         {
-            return Task.Run(() =>
+            return Task.Run<bool>(() =>
             {
                 Logger.InfoFormat("Compressing file '{0}'", fileInfo.FullName);
                 try
@@ -159,22 +172,22 @@ namespace LogRotator
                     var compressFilePath = GunZip.Compress(fileInfo.FullName);
 
                     Logger.InfoFormat("Deleting original file '{0}'", fileInfo.FullName);
-                    try { fileInfo.Delete(); }
-                    catch (Exception ex)
-                    {
-                        Logger.Error("Failed to delete file", ex);
-                    }
+                    fileInfo.Delete();
+
+                    return true;
                 }
                 catch (Exception ex)
                 {
                     Logger.Error("Failed to compress file", ex);
                 }
+
+                return false;
             });
         }
 
-        private Task DeleteFile(FileSystemInfo fileInfo)
+        private Task<bool> DeleteFile(FileSystemInfo fileInfo)
         {
-            return Task.Run(() =>
+            return Task.Run<bool>(() =>
             {
                 try
                 {
@@ -188,11 +201,15 @@ namespace LogRotator
                         Logger.InfoFormat("Deleting directory '{0}'", fileInfo.FullName);
 
                     fileInfo.Delete();
+
+                    return true;
                 }
                 catch (Exception ex)
                 {
                     Logger.Error("Failed to delete file or directory", ex);
                 }
+
+                return false;
             });
         }
 
