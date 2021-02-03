@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -75,20 +75,45 @@ namespace LogRotator
             var lastModified = DateTime.Now - this.Offset;
             if (directoryInfo.Exists && directoryInfo.CreationTime < lastModified)
             {
-                foreach (var fileInfo in directoryInfo.EnumerateFiles(this.FilePattern, SearchOption.TopDirectoryOnly))
-                    if (fileInfo.LastWriteTime < lastModified && fileInfo.Length >= this.Size)
-                        yield return fileInfo;
+                IEnumerable<FileInfo> fileInfos = null;
+                try
+                {
+                    fileInfos = directoryInfo.EnumerateFiles(this.FilePattern, SearchOption.TopDirectoryOnly);
+                }
+                catch (IOException)
+                { }
+
+                if (fileInfos != null)
+                    foreach (var fileInfo in fileInfos)
+                        if (fileInfo.LastWriteTime < lastModified && fileInfo.Length >= this.Size)
+                            yield return fileInfo;
 
                 if (this.SubDirs)
                 {
-                    var subDirectories = directoryInfo.EnumerateDirectories().OrderBy(d => d.Name.Length).ThenBy(d => d.Name);
-                    foreach (var dirInfo in subDirectories)
+                    IEnumerable<DirectoryInfo> subDirectories = null;
+                    try
                     {
-                        foreach (var fileInfo in this.GetFiles(dirInfo))
-                            yield return fileInfo;
+                        subDirectories = directoryInfo.EnumerateDirectories().OrderBy(d => d.Name.Length).ThenBy(d => d.Name);
                     }
+                    catch (IOException)
+                    { }
 
-                    if (this.DirInfo != directoryInfo && !directoryInfo.EnumerateFileSystemInfos().Any())
+                    if (subDirectories != null)
+                        foreach (var dirInfo in subDirectories)
+                        {
+                            foreach (var fileInfo in this.GetFiles(dirInfo))
+                                yield return fileInfo;
+                        }
+
+                    var deleteThisDirectory = false;
+                    try
+                    {
+                        deleteThisDirectory = directoryInfo.Exists && this.DirInfo != directoryInfo && !directoryInfo.EnumerateFileSystemInfos().Any();
+                    }
+                    catch (IOException)
+                    { }
+
+                    if (deleteThisDirectory)
                         yield return directoryInfo;
                 }
             }
@@ -108,21 +133,21 @@ namespace LogRotator
 
                     foreach (var fileInfo in rotateFiles)
                     {
-                        if(cancellationToken.IsCancellationRequested || filesCount >= maxBatchSize * 10)
+                        if (cancellationToken.IsCancellationRequested || filesCount >= maxBatchSize * 10)
                             break;
 
                         if (rotateTasks.Count >= maxBatchSize)
                             Task.WaitAny(rotateTasks.ToArray());
 
 
-                        foreach(var task in rotateTasks.Where(t => t.IsCompleted).ToArray())
+                        foreach (var task in rotateTasks.Where(t => t.IsCompleted).ToArray())
                         {
-                            if(task.Result)
+                            if (task.Result)
                                 filesCount++;
 
                             rotateTasks.Remove(task);
                         }
-                
+
                         rotateTasks.Add(RotateFile(fileInfo));
                     }
 
@@ -137,15 +162,15 @@ namespace LogRotator
 
                     foreach (var fileInfo in deleteFiles)
                     {
-                        if(cancellationToken.IsCancellationRequested || filesCount >= maxBatchSize * 10)
+                        if (cancellationToken.IsCancellationRequested || filesCount >= maxBatchSize * 10)
                             break;
 
                         if (deleteTasks.Count >= maxBatchSize)
                             Task.WaitAny(deleteTasks.ToArray());
 
-                        foreach(var task in deleteTasks.Where(t => t.IsCompleted).ToArray())
+                        foreach (var task in deleteTasks.Where(t => t.IsCompleted).ToArray())
                         {
-                            if(task.Result)
+                            if (task.Result)
                                 filesCount++;
 
                             deleteTasks.Remove(task);
